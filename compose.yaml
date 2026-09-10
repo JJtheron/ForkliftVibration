@@ -1,0 +1,36 @@
+services:
+  mysql-server:
+    image: yobasystems/alpine-mariadb:latest
+    container_name: mysql-server
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: B@zinga1
+      MYSQL_DATABASE: VibrationDB
+    volumes:
+      - /mnt/dietpi_userdata/docker-data/mysql:/var/lib/mysql
+
+  web-server:
+    image: nginx:alpine
+    container_name: html-web-server
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+
+  python-app:
+    build: ./python             # Tells Docker to use our custom Dockerfile
+    container_name: python-environment
+    restart: unless-stopped
+    ports:
+      - "5000:5000"             # Exposes the data API to the network
+    volumes:
+      - ./python:/app
+    # Hardware device mapping rules
+    privileged: true            # Required for GPIO pin registry mappings
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"   # Passes memory-mapped GPIO access
+      - "/dev/ttyAMA0:/dev/ttyAMA0"   # Maps default built-in hardware serial
+      - "/dev/ttyUSB0:/dev/ttyUSB0"   # Optional: Maps external USB-to-Serial adapters if used

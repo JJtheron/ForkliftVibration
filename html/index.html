@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DietPi Live Dashboard</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background: #f4f4f9; color: #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #007BFF; color: white; }
+    </style>
+</head>
+<body>
+    <h1>Raspberry Pi Hardware Database Log</h1>
+    <button onclick="fetchData()">Refresh Manually</button>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Sensor Value</th>
+            </tr>
+        </thead>
+        <tbody id="data-table">
+            <tr><td colspan="2">Loading database telemetry...</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        async function fetchData() {
+            try {
+                // Queries the Python API server running on port 5000
+                const response = await fetch(`http://${window.location.hostname}:5000/api/data`);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('data-table');
+                tbody.innerHTML = '';
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2">No records found in database yet.</td></tr>';
+                    return;
+                }
+
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${row.timestamp}</td><td>${row.value}</td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("Failed fetching data:", err);
+            }
+        }
+
+        // Auto-query the database every 5 seconds
+        setInterval(fetchData, 5000);
+        window.onload = fetchData;
+    </script>
+</body>
+</html>

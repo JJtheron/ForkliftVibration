@@ -1,0 +1,8 @@
+Deploy Container:
+    sudo docker compose up -d
+Stop the container: 
+    sudo docker compose down
+View running logs: 
+    sudo docker compose logs -f
+Restart the database: 
+    sudo docker compose restart
