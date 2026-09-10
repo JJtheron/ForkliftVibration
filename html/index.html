@@ -8,6 +8,7 @@
         table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
         th { background-color: #007BFF; color: white; }
+        .temp-badge { background: #E3F2FD; color: #0D47A1; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -19,31 +20,35 @@
             <tr>
                 <th>Timestamp</th>
                 <th>Sensor Value</th>
+                <th>Pi CPU Temperature</th>
             </tr>
         </thead>
         <tbody id="data-table">
-            <tr><td colspan="2">Loading database telemetry...</td></tr>
+            <tr><td colspan="3">Loading database telemetry...</td></tr>
         </tbody>
     </table>
 
     <script>
         async function fetchData() {
             try {
-                // Queries the Python API server running on port 5000
-                const response = await fetch(`http://${window.location.hostname}:5000/api/data`);
+                const response = await fetch('/api/data');
                 const data = await response.json();
                 
                 const tbody = document.getElementById('data-table');
                 tbody.innerHTML = '';
                 
                 if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="2">No records found in database yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="3">No records found in database yet.</td></tr>';
                     return;
                 }
 
                 data.forEach(row => {
                     const tr = document.createElement('tr');
-                    tr.innerHTML = `<td>${row.timestamp}</td><td>${row.value}</td>`;
+                    tr.innerHTML = `
+                        <td>${row.timestamp}</td>
+                        <td>${row.value}</td>
+                        <td><span class="temp-badge">${row.cpu_temp} °C</span></td>
+                    `;
                     tbody.appendChild(tr);
                 });
             } catch (err) {
@@ -51,7 +56,6 @@
             }
         }
 
-        // Auto-query the database every 5 seconds
         setInterval(fetchData, 5000);
         window.onload = fetchData;
     </script>

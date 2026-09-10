@@ -1,8 +1,16 @@
 Deploy Container:
-    sudo docker compose up -d
+    sudo docker compose up -d --build
 Stop the container: 
     sudo docker compose down
 View running logs: 
     sudo docker compose logs -f
 Restart the database: 
     sudo docker compose restart
+See print out from python:
+    sudo docker logs -t python-environment
+Clear mysql config:
+    sudo rm -rf /mnt/dietpi_userdata/docker-data/mysql/*
+Restart Python app:
+    sudo docker compose restart python-app
+See print out from web-server:
+sudo docker logs html-web-server

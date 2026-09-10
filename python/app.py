@@ -1,61 +1,98 @@
 import time
 import os
-import MySQLdb  # standard mariadb/mysql client library
+import threading
+import MySQLdb
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app) # Allows the HTML page to fetch data without security errors
+CORS(app)
 
-# Database connection configuration
-DB_HOST = "mysql-server"  # Docker container name handles the internal routing
+DB_HOST = "mysql-server"
 DB_USER = "root"
 DB_PASSWORD = "B@zinga1"
 DB_NAME = "VibrationDB"
 
 def init_db():
-    """Ensure our database table exists."""
+    """Initializes the database and updates the schema to store CPU temperature."""
     while True:
         try:
             db = MySQLdb.connect(host=DB_HOST, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
             cursor = db.cursor()
+            # Added cpu_temp field to store decimal degree information
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sensor_data (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    sensor_value TEXT NOT NULL
+                    sensor_value TEXT NOT NULL,
+                    cpu_temp DECIMAL(5,2) DEFAULT 0.00
                 )
             """)
             db.commit()
             db.close()
-            print("Database initialized successfully!")
+            print("Database and schema initialized successfully!")
             break
         except Exception as e:
             print(f"Waiting for database... Error: {e}")
             time.sleep(3)
 
+def get_pi_temperature():
+    """Reads the Raspberry Pi CPU temperature directly from the system kernel."""
+    try:
+        if os.path.exists("/sys/class/thermal/thermal_zone0/temp"):
+            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+                # Value is returned in millidegrees (e.g. 45123 = 45.1°C)
+                return round(float(f.read().strip()) / 1000.0, 2)
+        return 0.0  # Fallback if file isn't present in testing environments
+    except Exception as e:
+        print(f"Error reading CPU temperature: {e}")
+        return 0.0
+
+def telemetry_logger():
+    """Background loop that captures hardware sensor/serial streams and CPU temperatures."""
+    init_db()
+    while True:
+        try:
+            # 1. Capture your existing IO/Serial strings here
+            dummy_sensor_string = "Forklift Node Active" 
+            
+            # 2. Capture live Pi core temperature
+            current_temp = get_pi_temperature()
+            
+            # 3. Log everything to the MariaDB instance
+            db = MySQLdb.connect(host=DB_HOST, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
+            cursor = db.cursor()
+            cursor.execute(
+                "INSERT INTO sensor_data (sensor_value, cpu_temp) VALUES (%s, %s)",
+                (dummy_sensor_string, current_temp)
+            )
+            db.commit()
+            db.close()
+            
+            print(f"Logged Telemetry - Temp: {current_temp}°C")
+        except Exception as e:
+            print(f"Telemetry logging error: {e}")
+            
+        time.sleep(10) # Log a data point every 10 seconds
+
 @app.route('/api/data', methods=['GET'])
 def get_data():
-    """API endpoint for the HTML page to query."""
+    """Queries the database to return the latest logs to the HTML webpage."""
     try:
         db = MySQLdb.connect(host=DB_HOST, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
         cursor = db.cursor()
-        cursor.execute("SELECT timestamp, sensor_value FROM sensor_data ORDER BY id DESC LIMIT 10")
+        cursor.execute("SELECT timestamp, sensor_value, cpu_temp FROM sensor_data ORDER BY id DESC LIMIT 10")
         rows = cursor.fetchall()
         db.close()
         
-        data_list = [{"timestamp": str(row[0]), "value": row[1]} for row in rows]
+        data_list = [{"timestamp": str(row[0]), "value": row[1], "cpu_temp": float(row[2])} for row in rows]
         return jsonify(data_list)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# -- HARDWARE READING LOGIC --
-# In a real environment, you would use 'import serial' or 'import RPi.GPIO'
-# Example: 
-# ser = serial.Serial('/dev/ttyAMA0', 9600)
-# data = ser.readline().decode('utf-8')
-
 if __name__ == '__main__':
-    init_db()
-    # Run the API server on port 5000
+    # Start the hardware logger thread independently from the web API server
+    log_thread = threading.Thread(target=telemetry_logger, daemon=True)
+    log_thread.start()
+    
     app.run(host='0.0.0.0', port=5000)
