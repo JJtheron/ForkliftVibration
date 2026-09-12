@@ -3,14 +3,17 @@ services:
     image: yobasystems/alpine-mariadb:latest
     container_name: mysql-server
     restart: unless-stopped
-    ports:
-      - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: B@zinga1
-      MARIADB_ROOT_PASSWORD: B@zinga1
-      MYSQL_DATABASE: VibrationDB
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       - /mnt/dietpi_userdata/docker-data/mysql:/var/lib/mysql
+      - ./SQL/Database_schema.sql:/docker-entrypoint-initdb.d/Database_schema.sql:ro
+    networks:
+      - backend
 
   web-server:
     image: nginx:alpine
@@ -23,19 +26,36 @@ services:
       - ./html:/usr/share/nginx/html:ro
       - ./html/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
+      - ./auth/.htpasswd:/etc/nginx/auth/.htpasswd:ro
+    networks:
+      - frontend
 
   python-app:
-    build: ./python             # Tells Docker to use our custom Dockerfile
+    build: ./python
     container_name: python-environment
     restart: unless-stopped
     environment:
-      - PYTHONUNBUFFERED=1
+      PYTHONUNBUFFERED: "1"
+      DB_HOST: mysql-server
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - ./python:/app
-      - /sys:/sys:ro  
-    # Hardware device mapping rules
-    privileged: true            # Required for GPIO pin registry mappings
+      - /sys:/sys:ro
     devices:
-      - "/dev/gpiomem:/dev/gpiomem"   # Passes memory-mapped GPIO access
-      - "/dev/ttyAMA0:/dev/ttyAMA0"   # Maps default built-in hardware serial
-      - "/dev/ttyUSB0:/dev/ttyUSB0"   # Optional: Maps external USB-to-Serial adapters if used
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/ttyAMA0:/dev/ttyAMA0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend:
+  backend:
+    internal: true

@@ -3,7 +3,9 @@ flask-cors
 mysqlclient
 pyserial
 RPi.GPIO
-adafruit-circuitpython-adxl34x
 gpsd-py3
 RPLCD
+numpy==1.26.4
+scipy==1.13.1
 smbus2
+gpiozero

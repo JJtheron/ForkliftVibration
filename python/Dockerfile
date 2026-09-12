@@ -1,7 +1,7 @@
 FROM python:3.11-alpine
 
 # Install build dependencies required for compiling low-level C libraries on ARM
-RUN apk add --no-cache gcc musl-dev mariadb-connector-c-dev linux-headers
+RUN apk add --no-cache gcc musl-dev mariadb-connector-c-dev linux-headers openblas-dev gfortran
 
 WORKDIR /app
 

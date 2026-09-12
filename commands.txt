@@ -14,3 +14,29 @@ Restart Python app:
     sudo docker compose restart python-app
 See print out from web-server:
 sudo docker logs html-web-server
+
+Getting GPS to work:
+sudo apt update
+sudo apt install gpsd gpsd-clients
+
+sudo vi /etc/default/gpsd
+edit:
+DEVICES="/dev/serial0"
+GPSD_OPTIONS="-n -G"
+USBAUTO="true"
+
+sudo systemctl restart gpsd
+
+check that it works:
+cgps
+gpsmon
+
+check address of accelorometer and LCD.
+i2cdetect -y 1
+
+Create password:
+sudo docker run --rm -it \
+  -v "$(pwd)/auth:/auth" \
+  --entrypoint htpasswd \
+  httpd:alpine \
+  -cB /auth/.htpasswd admin

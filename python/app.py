@@ -8,10 +8,12 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-DB_HOST = "mysql-server"
-DB_USER = "root"
-DB_PASSWORD = "B@zinga1"
-DB_NAME = "VibrationDB"
+DB_HOST = os.environ["DB_HOST"]
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
+
 
 def init_db():
     """Initializes the database and updates the schema to store CPU temperature."""
