@@ -1,6 +1,6 @@
 flask
 flask-cors
-mysqlclient
+pymysql
 pyserial
 RPi.GPIO
 gpsd-py3

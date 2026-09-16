@@ -590,7 +590,7 @@ def run(args):
     store = None
 
     if args.db:
-        import store as store_mod
+        import DataBaseInterface as store_mod
         dsn = {"host": args.db_host, "database": args.db_name}
         if args.db_port:
             dsn["port"] = args.db_port
@@ -602,7 +602,14 @@ def run(args):
             dsn["unix_socket"] = args.db_socket
         if args.db_defaults_file and os.path.exists(args.db_defaults_file):
             dsn["read_default_file"] = args.db_defaults_file
-        store = store_mod.Store(dsn=dsn).connect()
+        while True:
+            try:
+                store = store_mod.Store(dsn=dsn).connect()
+                break
+            except Exception as exc:
+                print(f"Waiting for database... {exc}", file=sys.stderr,
+                      flush=True)
+                time.sleep(3)
         sid = store.start_session(dict(
             logger_id=args.logger_id, truck_id=args.truck_id,
             operator_ref=args.operator_ref,
@@ -622,7 +629,7 @@ def run(args):
         print(f"MySQL session {sid} ({store.session_uuid})")
 
     if args.gps:
-        import gps as gps_mod
+        import GPS_interface as gps_mod
         try:
             gps_reader = gps_mod.GPSReader(
                 port=args.gps_port, rate_ms=args.gps_rate_ms,
@@ -638,7 +645,7 @@ def run(args):
     def on_shock(ev):
         if store is None:
             return
-        import store as store_mod
+        import DataBaseInterface as store_mod
         fix, src, err = (track.at(ev["t"]) if track else (None, "none", None))
         store.add_event(store_mod.build_event_row(
             ev["seq"], ev["t"], ev["peak"], ev["axis"], ev["crest"],
@@ -745,7 +752,7 @@ def run(args):
                 row = summarise(axes, shocks, now - started,
                                 args.exposure_hours, gate)
                 if store is not None:
-                    import store as store_mod
+                    import DataBaseInterface as store_mod
                     store.add_interval((store_mod.utc(period_start),
                                         store_mod.utc(now)) + row)
                 period_start = now
@@ -768,7 +775,7 @@ def run(args):
         row = summarise(axes, shocks, now - started,
                         args.exposure_hours, gate, final=True)
         if store is not None:
-            import store as store_mod
+            import DataBaseInterface as store_mod
             store.add_interval((store_mod.utc(period_start),
                                 store_mod.utc(now)) + row)
             store.close()
@@ -856,11 +863,12 @@ def main():
     d = p.add_argument_group("database")
     d.add_argument("--db", action="store_true",
                    help="write sessions, fixes and events to MySQL")
-    d.add_argument("--db-host", default="localhost")
-    d.add_argument("--db-port", type=int)
-    d.add_argument("--db-user")
-    d.add_argument("--db-password")
-    d.add_argument("--db-name", default="wbv")
+    d.add_argument("--db-host", default=os.environ.get("DB_HOST", "localhost"))
+    d.add_argument("--db-port", type=int,
+                   default=int(os.environ.get("DB_PORT", "3306")))
+    d.add_argument("--db-user", default=os.environ.get("DB_USER"))
+    d.add_argument("--db-password", default=os.environ.get("DB_PASSWORD"))
+    d.add_argument("--db-name", default=os.environ.get("DB_NAME", "wbv"))
     d.add_argument("--db-socket", default="/var/run/mysqld/mysqld.sock")
     d.add_argument("--db-defaults-file",
                    default=os.path.expanduser("~/.my.cnf"),

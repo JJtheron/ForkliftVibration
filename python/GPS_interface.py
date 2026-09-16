@@ -325,6 +325,13 @@ class GPSReader(threading.Thread):
             time.sleep(0.2)
             self.ser.reset_input_buffer()
 
+        # Enable SBAS/WAAS corrections when a compatible correction source is
+        # visible. This usually improves open-sky accuracy modestly.
+        self.ser.write(pmtk("PMTK313,1"))
+        time.sleep(0.1)
+        self.ser.write(pmtk("PMTK301,2"))
+        time.sleep(0.1)
+
         # RMC + GGA only; everything else wastes bandwidth
         self.ser.write(pmtk("PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"))
         time.sleep(0.1)

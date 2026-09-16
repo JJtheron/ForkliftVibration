@@ -1,7 +1,11 @@
-FROM python:3.11-alpine
+FROM python:3.11-slim-bookworm
 
-# Install build dependencies required for compiling low-level C libraries on ARM
-RUN apk add --no-cache gcc musl-dev mariadb-connector-c-dev linux-headers openblas-dev gfortran
+# Keep the image compatible with Raspberry Pi OS ARM64 wheels. SciPy and NumPy
+# are substantially easier to install on Debian/glibc than Alpine/musl.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		gcc g++ linux-libc-dev libmariadb-dev libopenblas-dev \
+	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

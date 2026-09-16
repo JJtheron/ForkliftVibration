@@ -1,63 +1,86 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>DietPi Live Dashboard</title>
-    <style>
-        body { font-family: sans-serif; margin: 40px; background: #f4f4f9; color: #333; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        th { background-color: #007BFF; color: white; }
-        .temp-badge { background: #E3F2FD; color: #0D47A1; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forklift vibration monitor</title>
+  <style>
+    :root { color-scheme: light; --ink: #17211b; --muted: #66736a; --line: #d6ded8; --paper: #f7f8f4; --accent: #c24d2d; --green: #24734b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.45 Georgia, serif; }
+    main { max-width: 1100px; margin: 0 auto; padding: 36px 22px 60px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 2px solid var(--ink); padding-bottom: 18px; }
+    h1 { margin: 0; font: 700 36px/1.05 Georgia, serif; letter-spacing: 0; }
+    .stamp { color: var(--muted); font: 13px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 24px 0; }
+    .metric { border-top: 4px solid var(--green); background: white; padding: 16px; min-height: 112px; }
+    .label { color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+    .value { display: block; margin-top: 12px; font-size: 25px; overflow-wrap: anywhere; }
+    section { background: white; border-top: 1px solid var(--line); padding: 18px; margin-top: 18px; }
+    section h2 { margin: 0 0 12px; font-size: 21px; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    button, a { display: inline-block; border: 0; background: var(--ink); color: white; padding: 10px 14px; text-decoration: none; cursor: pointer; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button:hover, a:hover { background: var(--accent); }
+    input { border: 1px solid var(--line); padding: 9px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 14px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; }
+    th { color: var(--muted); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+    .error { color: var(--accent); }
+    @media (max-width: 700px) { header { display: block; } .stamp { margin-top: 10px; text-align: left; } .grid { grid-template-columns: 1fr; } h1 { font-size: 30px; } section { padding: 14px; overflow-x: auto; } }
+  </style>
 </head>
 <body>
-    <h1>Raspberry Pi Hardware Database Log</h1>
-    <button onclick="fetchData()">Refresh Manually</button>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                <th>Sensor Value</th>
-                <th>Pi CPU Temperature</th>
-            </tr>
-        </thead>
-        <tbody id="data-table">
-            <tr><td colspan="3">Loading database telemetry...</td></tr>
-        </tbody>
-    </table>
-
-    <script>
-        async function fetchData() {
-            try {
-                const response = await fetch('/api/data');
-                const data = await response.json();
-                
-                const tbody = document.getElementById('data-table');
-                tbody.innerHTML = '';
-                
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3">No records found in database yet.</td></tr>';
-                    return;
-                }
-
-                data.forEach(row => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${row.timestamp}</td>
-                        <td>${row.value}</td>
-                        <td><span class="temp-badge">${row.cpu_temp} °C</span></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (err) {
-                console.error("Failed fetching data:", err);
-            }
-        }
-
-        setInterval(fetchData, 5000);
-        window.onload = fetchData;
-    </script>
+  <main>
+    <header>
+      <h1>Forklift vibration monitor</h1>
+      <div class="stamp" id="updated">Connecting...</div>
+    </header>
+    <div class="grid">
+      <div class="metric"><span class="label">Latest GPS</span><strong class="value" id="gps">Waiting for fix</strong></div>
+      <div class="metric"><span class="label">Latest shock</span><strong class="value" id="shock">No shocks recorded</strong></div>
+      <div class="metric"><span class="label">Logger session</span><strong class="value" id="session">Not started</strong></div>
+    </div>
+    <section>
+      <h2>Shift export</h2>
+      <div class="toolbar">
+        <label for="day">UTC date</label>
+        <input id="day" type="date">
+        <a id="download" href="/api/events.csv">Download shock CSV</a>
+        <button id="refresh" type="button">Refresh events</button>
+      </div>
+    </section>
+    <section>
+      <h2>Recent shocks</h2>
+      <table>
+        <thead><tr><th>UTC</th><th>Peak m/s²</th><th>Axis</th><th>Coordinates</th><th>Position</th></tr></thead>
+        <tbody id="events"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </section>
+  </main>
+  <script>
+    const text = value => value == null ? "-" : String(value);
+    const formatCoord = (lat, lon) => lat == null || lon == null ? "-" : `${Number(lat).toFixed(5)}, ${Number(lon).toFixed(5)}`;
+    async function refreshStatus() {
+      const response = await fetch('/api/status');
+      if (!response.ok) throw new Error('status unavailable');
+      const data = await response.json();
+      const gps = data.gps, shock = data.last_shock, session = data.session;
+      document.querySelector('#gps').textContent = gps ? formatCoord(gps.lat, gps.lon) : 'Waiting for fix';
+      document.querySelector('#shock').textContent = shock ? `${Number(shock.peak_ms2).toFixed(2)} m/s² (${shock.axis})` : 'No shocks recorded';
+      document.querySelector('#session').textContent = session ? `#${session.session_id} active` : 'Not started';
+      document.querySelector('#updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    }
+    async function refreshEvents() {
+      const response = await fetch('/api/events?limit=50');
+      const rows = await response.json();
+      const body = document.querySelector('#events');
+      body.innerHTML = rows.length ? rows.map(row => `<tr><td>${text(row.event_time)}</td><td>${Number(row.peak_ms2).toFixed(2)}</td><td>${text(row.axis)}</td><td>${formatCoord(row.lat, row.lon)}</td><td>${text(row.pos_source)}</td></tr>`).join('') : '<tr><td colspan="5">No shocks recorded.</td></tr>';
+    }
+    function updateDownload() { document.querySelector('#download').href = `/api/events.csv${document.querySelector('#day').value ? `?date=${document.querySelector('#day').value}` : ''}`; }
+    async function refresh() { try { await Promise.all([refreshStatus(), refreshEvents()]); } catch (error) { document.querySelector('#updated').textContent = 'API unavailable'; document.querySelector('#updated').className = 'error'; } }
+    document.querySelector('#day').addEventListener('change', updateDownload);
+    document.querySelector('#refresh').addEventListener('click', refresh);
+    refresh(); setInterval(refreshStatus, 5000); setInterval(refreshEvents, 15000);
+  </script>
 </body>
 </html>
