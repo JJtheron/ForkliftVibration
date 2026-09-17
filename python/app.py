@@ -8,6 +8,8 @@ import shlex
 import signal
 import subprocess
 import threading
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pymysql
 from flask import Flask, Response, jsonify, request
@@ -15,6 +17,7 @@ from flask import Flask, Response, jsonify, request
 from Local_screen import open_display, show
 
 app = Flask(__name__)
+PACIFIC_TZ = ZoneInfo("America/Los_Angeles")
 
 DB = {
     "host": os.environ.get("DB_HOST", "mysql-server"),
@@ -38,6 +41,32 @@ def query(sql, params=()):
             return cursor.fetchall()
 
 
+def to_pacific(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(PACIFIC_TZ)
+
+
+def serialize_rows(rows):
+    out = []
+    for row in rows:
+        converted = {}
+        for key, value in row.items():
+            if isinstance(value, datetime):
+                converted[key] = to_pacific(value).isoformat(timespec="seconds")
+            else:
+                converted[key] = value
+        out.append(converted)
+    return out
+
+
 def latest_readings():
     sessions = query(
         "SELECT session_id, started_at, ended_at FROM session "
@@ -56,8 +85,18 @@ def latest_readings():
         "FROM shock_event WHERE session_id=%s ORDER BY event_time DESC LIMIT 1",
         (session_id,),
     )
-    return {"session": sessions[0], "gps": fixes[0] if fixes else None,
-            "last_shock": events[0] if events else None}
+    result = {"session": sessions[0], "gps": fixes[0] if fixes else None,
+              "last_shock": events[0] if events else None}
+    session = result["session"]
+    if session.get("started_at") is not None:
+        session["started_at"] = to_pacific(session["started_at"]).isoformat(timespec="seconds")
+    if session.get("ended_at") is not None:
+        session["ended_at"] = to_pacific(session["ended_at"]).isoformat(timespec="seconds")
+    if result["gps"] is not None:
+        result["gps"]["fix_time"] = to_pacific(result["gps"]["fix_time"]).isoformat(timespec="seconds")
+    if result["last_shock"] is not None:
+        result["last_shock"]["event_time"] = to_pacific(result["last_shock"]["event_time"]).isoformat(timespec="seconds")
+    return result
 
 
 @app.get("/api/health")
@@ -86,7 +125,7 @@ def events():
             "lat, lon, speed_mps, pos_source, clipped "
             "FROM shock_event ORDER BY event_time DESC LIMIT %s", (limit,)
         )
-        return jsonify(rows)
+        return jsonify(serialize_rows(rows))
     except Exception as exc:
         return jsonify({"error": str(exc)}), 503
 
@@ -95,8 +134,12 @@ def events():
 def events_csv():
     """Download shock values and GPS coordinates for mapping."""
     day = request.args.get("date")
-    where = "WHERE DATE(event_time) = %s" if day else ""
-    params = (day,) if day else ()
+    if day:
+        where = "WHERE DATE(CONVERT_TZ(event_time, '+00:00', '-08:00')) = %s"
+        params = (day,)
+    else:
+        where = ""
+        params = ()
     try:
         rows = query(
             "SELECT event_time, peak_ms2, axis, crest_factor, lat, lon, "
@@ -107,11 +150,12 @@ def events_csv():
         return jsonify({"error": str(exc)}), 503
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["utc", "shock_ms2", "axis", "crest_factor", "latitude",
+    writer.writerow(["pst", "shock_ms2", "axis", "crest_factor", "latitude",
                      "longitude", "speed_mps", "position_source",
                      "position_error_s", "clipped"])
     for row in rows:
-        writer.writerow([row["event_time"], row["peak_ms2"], row["axis"],
+        pst = to_pacific(row["event_time"]).isoformat(timespec="seconds")
+        writer.writerow([pst, row["peak_ms2"], row["axis"],
                          row["crest_factor"], row["lat"], row["lon"],
                          row["speed_mps"], row["pos_source"],
                          row["pos_error_s"], row["clipped"]])

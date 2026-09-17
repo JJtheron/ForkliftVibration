@@ -49,10 +49,10 @@ G_RANGE = 4              # +/- 4 g. Dock-plate hits will clip a 2 g part.
 FIFO_WATERMARK = 24      # of 32. ~30 ms of data per interrupt at 800 Hz.
 
 # Shock detection, on weighted acceleration
-SHOCK_PEAK_MS2 = 2.5     # instantaneous weighted peak that counts as a shock
-SHOCK_REARM_S = 0.5      # refractory period so one pothole is one event
-PRE_TRIGGER_S = 1.0      # waveform captured before the trigger sample
-POST_TRIGGER_S = 2.0     # ...and after
+SHOCK_PEAK_MS2 = 2.5     #2.5 instantaneous weighted peak that counts as a shock
+SHOCK_REARM_S = 0.5      #0.5 refractory period so one pothole is one event
+PRE_TRIGGER_S = 1.0      #1.0  waveform captured before the trigger sample
+POST_TRIGGER_S = 2.0     #2.0  ...and after
 
 # Health guidance thresholds (ISO 2631-1 / EU 2002/44/EC), 8 h equivalent
 EAV_AWMS2 = 0.5          # exposure action value, r.m.s.

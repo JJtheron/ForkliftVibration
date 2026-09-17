@@ -58,6 +58,59 @@ docker compose down
 The dashboard is served at `https://<pi-hostname>/`. The CSV endpoint is
 `/api/events.csv`; add `?date=YYYY-MM-DD` to export one UTC day.
 
+## Private Wi-Fi access point
+
+The Pi can provide a private Wi-Fi network for a nearby computer. This uses
+NetworkManager's built-in access-point and DHCP support; it does not bridge or
+bridge the Wi-Fi network to another network. NetworkManager may provide NAT
+through another active connection in shared mode.
+
+Check that the selected adapter supports AP mode before using it:
+
+```sh
+iw list | sed -n '/Supported interface modes:/,/Band /p'
+```
+
+On the current Pi, the built-in `wlan0` supports AP mode, but the Edimax
+`wlan1` adapter does not. Therefore the `wlan1` setup script cannot work with
+that adapter. Use the built-in radio instead:
+
+```sh
+sudo nmcli device wifi hotspot ifname wlan0 \
+	con-name forklift-wlan0-ap \
+	ssid ForkliftTracker \
+	password 'replace-with-a-strong-password'
+```
+
+This may disconnect `wlan0` from its current Wi-Fi network. A separate USB
+adapter that advertises `AP` mode can be used with `setup-wlan1-ap.sh`.
+
+Install NetworkManager if needed, then run the setup script with an SSID and a
+WPA2 password of at least eight characters:
+
+```sh
+sudo apt update
+sudo apt install network-manager
+sudo systemctl enable --now NetworkManager
+sudo ./setup-wlan1-ap.sh ForkliftTracker 'replace-with-a-strong-password'
+
+```
+
+Connect the computer to that SSID. NetworkManager assigns it an address in
+`192.168.50.0/24`, and the Pi is `192.168.50.1`. Open
+`https://192.168.50.1/` and sign in with the Nginx login. Because the existing
+certificate is not issued for the IP address, a browser certificate warning is
+expected unless the certificate is regenerated for the chosen hostname.
+
+To stop the access point:
+
+```sh
+sudo nmcli connection down forklift-wlan1-ap
+```
+
+The setup script replaces only the connection named `forklift-wlan1-ap`; it
+does not change other Wi-Fi connections.
+
 ## Measurement note
 
 The logger applies Wk weighting to the vertical axis and Wd weighting to the
