@@ -67,31 +67,84 @@ def serialize_rows(rows):
     return out
 
 
+def resolve_event_csv_path():
+    candidates = []
+    env_dir = os.environ.get("WBV_OUT_DIR")
+    if env_dir:
+        candidates.append(os.path.join(env_dir, "events.csv"))
+    for base in ("./data/wbv_events", "./wbv_events", "/data/wbv_events"):
+        candidates.append(os.path.join(base, "events.csv"))
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0] if candidates else None
+
+
+def read_local_events(csv_path=None, limit=50):
+    path = csv_path or resolve_event_csv_path()
+    if not path or not os.path.exists(path):
+        return []
+    rows = []
+    with open(path, newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if not row:
+                continue
+            if len(rows) >= limit:
+                break
+            rows.append({
+                "event_time": row.get("utc"),
+                "peak_ms2": float(row.get("peak_ms2", 0.0) or 0.0),
+                "axis": row.get("axis"),
+                "crest_factor": float(row.get("crest", row.get("crest_factor") or 0.0) or 0.0),
+                "lat": None,
+                "lon": None,
+                "speed_mps": None,
+                "pos_source": "none",
+                "clipped": False,
+                "file": row.get("file"),
+            })
+    return rows
+
+
 def latest_readings():
-    sessions = query(
-        "SELECT session_id, started_at, ended_at FROM session "
-        "ORDER BY session_id DESC LIMIT 1"
-    )
-    if not sessions:
-        return None
-    session_id = sessions[0]["session_id"]
-    fixes = query(
-        "SELECT fix_time, lat, lon, speed_mps, satellites, hdop "
-        "FROM gps_fix WHERE session_id=%s ORDER BY fix_time DESC LIMIT 1",
-        (session_id,),
-    )
-    events = query(
-        "SELECT event_time, peak_ms2, axis, lat, lon, pos_source "
-        "FROM shock_event WHERE session_id=%s ORDER BY event_time DESC LIMIT 1",
-        (session_id,),
-    )
-    result = {"session": sessions[0], "gps": fixes[0] if fixes else None,
+    try:
+        sessions = query(
+            "SELECT session_id, started_at, ended_at FROM session "
+            "ORDER BY session_id DESC LIMIT 1"
+        )
+        session = sessions[0] if sessions else None
+        if session is not None:
+            session_id = session["session_id"]
+            fixes = query(
+                "SELECT fix_time, lat, lon, speed_mps, satellites, hdop "
+                "FROM gps_fix WHERE session_id=%s ORDER BY fix_time DESC LIMIT 1",
+                (session_id,),
+            )
+            events = query(
+                "SELECT event_time, peak_ms2, axis, lat, lon, pos_source "
+                "FROM shock_event WHERE session_id=%s ORDER BY event_time DESC LIMIT 1",
+                (session_id,),
+            )
+        else:
+            fixes = []
+            events = []
+    except Exception:
+        session = None
+        fixes = []
+        events = []
+    if not events:
+        local_events = read_local_events(limit=1)
+        if local_events:
+            events = [local_events[0]]
+    result = {"session": session, "gps": fixes[0] if fixes else None,
               "last_shock": events[0] if events else None}
-    session = result["session"]
-    if session.get("started_at") is not None:
-        session["started_at"] = to_pacific(session["started_at"]).isoformat(timespec="seconds")
-    if session.get("ended_at") is not None:
-        session["ended_at"] = to_pacific(session["ended_at"]).isoformat(timespec="seconds")
+    if result["session"] is not None:
+        session = result["session"]
+        if session.get("started_at") is not None:
+            session["started_at"] = to_pacific(session["started_at"]).isoformat(timespec="seconds")
+        if session.get("ended_at") is not None:
+            session["ended_at"] = to_pacific(session["ended_at"]).isoformat(timespec="seconds")
     if result["gps"] is not None:
         result["gps"]["fix_time"] = to_pacific(result["gps"]["fix_time"]).isoformat(timespec="seconds")
     if result["last_shock"] is not None:
@@ -125,9 +178,13 @@ def events():
             "lat, lon, speed_mps, pos_source, clipped "
             "FROM shock_event ORDER BY event_time DESC LIMIT %s", (limit,)
         )
-        return jsonify(serialize_rows(rows))
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
+    except Exception:
+        rows = []
+    if not rows:
+        rows = read_local_events(limit=limit)
+        if not rows:
+            return jsonify({"error": "No shock events available"}), 503
+    return jsonify(serialize_rows(rows))
 
 
 @app.get("/api/events.csv")
@@ -146,8 +203,35 @@ def events_csv():
             "speed_mps, pos_source, pos_error_s, clipped "
             f"FROM shock_event {where} ORDER BY event_time", params
         )
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 503
+    except Exception:
+        rows = []
+
+    if not rows:
+        rows = read_local_events(limit=1000)
+        if not rows:
+            return jsonify({"error": "No shock events available"}), 503
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["pst", "shock_ms2", "axis", "crest_factor", "latitude",
+                         "longitude", "speed_mps", "position_source",
+                         "position_error_s", "clipped"])
+        for row in rows:
+            writer.writerow([
+                row["event_time"],
+                row["peak_ms2"],
+                row["axis"],
+                row["crest_factor"],
+                row["lat"],
+                row["lon"],
+                row["speed_mps"],
+                row["pos_source"],
+                None,
+                row["clipped"],
+            ])
+        return Response(output.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": "attachment; filename=forklift-shocks.csv"
+        })
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["pst", "shock_ms2", "axis", "crest_factor", "latitude",

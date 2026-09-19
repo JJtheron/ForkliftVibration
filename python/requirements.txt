@@ -5,7 +5,7 @@ pyserial
 RPi.GPIO
 gpsd-py3
 RPLCD
-numpy==1.26.4
-scipy==1.13.1
+numpy
+scipy
 smbus2
 gpiozero

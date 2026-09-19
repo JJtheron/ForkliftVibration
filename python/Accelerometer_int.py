@@ -267,6 +267,7 @@ class ADXL343:
         self._w8(REG_INT_MAP, 0x18)
         self._w8(REG_INT_ENABLE, 0x02 | 0x10 | 0x08)
         self._r8(REG_INT_SOURCE)
+        print(f">>>>>>>>>{act * THRESH_LSB_MS2}, {inact * THRESH_LSB_MS2}, {t_inact}<<<<<<<<<<")
         return act * THRESH_LSB_MS2, inact * THRESH_LSB_MS2, t_inact
 
     def int_source(self):
@@ -588,7 +589,6 @@ def run(args):
     track = None
     gps_reader = None
     store = None
-
     if args.db:
         import DataBaseInterface as store_mod
         dsn = {"host": args.db_host, "database": args.db_name}
@@ -627,7 +627,6 @@ def run(args):
         ))
         store.start()
         print(f"MySQL session {sid} ({store.session_uuid})")
-
     if args.gps:
         import GPS_interface as gps_mod
         try:
@@ -636,33 +635,33 @@ def run(args):
                 on_fix=(store.add_fix if store else None)).open()
             gps_reader.start()
             track = gps_reader.track
+            print(f"{track}track1<<<<<<<<<<<<<<<<<<<<<<<<<<<")
             print(f"GPS on {args.gps_port} at "
                   f"{1000/args.gps_rate_ms:.0f} Hz")
         except Exception as exc:
             print(f"GPS unavailable ({exc}); events will not be geotagged",
                   file=sys.stderr)
-
     def on_shock(ev):
         if store is None:
             return
         import DataBaseInterface as store_mod
+        print(f"{track}track2<<<<<<<<<<<<<<<<<<<<<<<<<<<")
         fix, src, err = (track.at(ev["t"]) if track else (None, "none", None))
+        print(f"{fix}, {src}, {err}track3<<<<<<<<<<<<<<<<<<<<<<<<<<<")
         store.add_event(store_mod.build_event_row(
             ev["seq"], ev["t"], ev["peak"], ev["axis"], ev["crest"],
             ev["vdv_contrib"], ev["raw_peak"], ev["clipped"],
             fix, src, err, ev["path"]))
-
     shocks = ShockLogger(fs, args.out_dir, on_event=on_shock,
                          g_range=args.range)
     gate = MotionGate(fs, use_hw=args.hw_gate, enabled=not args.no_gate)
     if args.no_gate:
         print("Motion gating DISABLED - parked time will dilute the metrics")
-
+    print(f"{args.hw_gate, args.no_gate}, InitMotionGate<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
     if args.hw_gate and not args.no_gate:
         a, i, t = dev.configure_activity_gate()
         print(f"Hardware gate: wake >{a:.2f}, sleep <{i:.2f} m/s^2 raw "
               f"for {t} s (62.5 mg steps)")
-
     q = queue.Queue(maxsize=256)
     stop = threading.Event()
 
@@ -678,7 +677,6 @@ def run(args):
         except queue.Full:
             print("  WARNING: processing fell behind, block dropped",
                   file=sys.stderr, flush=True)
-
     gate_pin = None
     if args.hw_gate and not args.no_gate:
         try:
@@ -690,7 +688,6 @@ def run(args):
             print(f"INT2 setup failed ({exc}); software gate only",
                   file=sys.stderr)
             gate.use_hw = False
-
     trigger = None
     if not args.poll:
         try:
@@ -701,13 +698,11 @@ def run(args):
         except Exception as exc:
             print(f"Interrupt setup failed ({exc}); falling back to polling",
                   file=sys.stderr)
-
     def poller():
         period = args.watermark / fs * 0.5
         while not stop.is_set():
             drain()
             time.sleep(period)
-
     if trigger is None:
         threading.Thread(target=poller, daemon=True).start()
         print("Polling FIFO")
@@ -719,7 +714,6 @@ def run(args):
     started = time.time()
     period_start = started
     next_summary = started + SUMMARY_INTERVAL_S
-
     try:
         while not stop.is_set():
             try:
@@ -785,6 +779,7 @@ def run(args):
                   + (f", {store.dropped} dropped" if store.dropped else "")
                   + (f", last error: {store.last_error}"
                      if store.last_error else ""))
+    print("11<<<<<<<<<<<<<<<<<<<<<<<<<")
     return 0
 
 

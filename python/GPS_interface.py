@@ -20,6 +20,7 @@ records how far it had to reach (pos_error_s) and by what method.
 
 import argparse
 import math
+import os
 import sys
 import threading
 import time
@@ -299,25 +300,43 @@ class GPSReader(threading.Thread):
         self.bad_checksums = 0
         self.last_error = None
         self._pending = {}       # GGA fields waiting for their RMC
+        
 
     def open(self):
         import serial
+
+        print(f"GPS startup: checking port {self.port}", flush=True)
+        if not os.path.exists(self.port):
+            raise RuntimeError(f"GPS port does not exist: {self.port}")
+
         # The HAT keeps its baud across a warm reboot but resets to 9600 on
         # power loss, so try the target first and fall back.
         for baud in (self.target_baud, self.baud):
-            ser = serial.Serial(self.port, baud, timeout=1)
+            print(f"GPS startup: trying port {self.port} at {baud} baud", flush=True)
+            try:
+                ser = serial.Serial(self.port, baud, timeout=1)
+            except serial.SerialException as exc:
+                print(f"GPS startup: serial open failed on {self.port} at {baud} baud: {exc}", flush=True)
+                continue
+            except Exception as exc:
+                print(f"GPS startup: unexpected open failure on {self.port} at {baud} baud: {exc}", flush=True)
+                continue
+
             time.sleep(0.2)
             ser.reset_input_buffer()
             if self._talking(ser):
                 self.ser = ser
+                print(f"GPS startup: successful NMEA probe on {self.port} at {baud} baud", flush=True)
                 break
+            print(f"GPS startup: no valid NMEA data from {self.port} at {baud} baud; closing port", flush=True)
             ser.close()
         else:
             raise RuntimeError(
                 f"no NMEA on {self.port} at {self.target_baud} or {self.baud} "
-                f"(serial console still enabled?)")
+                f"(serial console still enabled, GPS not connected, or another process is using the port)")
 
         if self.ser.baudrate != self.target_baud:
+            print(f"GPS startup: switching port {self.port} from {self.ser.baudrate} to {self.target_baud}", flush=True)
             self.ser.write(pmtk(f"PMTK251,{self.target_baud}"))
             self.ser.flush()
             time.sleep(0.3)
@@ -337,18 +356,47 @@ class GPSReader(threading.Thread):
         time.sleep(0.1)
         self.ser.write(pmtk(f"PMTK220,{self.rate_ms}"))
         time.sleep(0.1)
+        print(f"GPS startup: configured GPS on {self.port} and ready to read", flush=True)
         return self
 
     @staticmethod
-    def _talking(ser, timeout=2.0):
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    def _talking(ser, timeout=30.0):
+        """Read one serial line in a separate thread; fail fast if no data arrives.
+
+        This prevents GPS startup from hanging forever when the port is dead,
+        already in use, or not producing NMEA data.
+        """
+        result = {"line": ""}
+        error = {"exc": None}
+
+        def worker():
             try:
-                line = ser.readline().decode("ascii", "ignore")
+                result["line"] = ser.readline().decode("ascii", "ignore")
+            except Exception as exc:  # pragma: no cover - exercised by live serial checks
+                error["exc"] = exc
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        thread.join(timeout)
+
+        if thread.is_alive():
+            try:
+                ser.close()
             except Exception:
-                return False
-            if line.startswith("$"):
-                return True
+                pass
+            print(f"GPS probe timed out on {getattr(ser, 'port', 'unknown')} after {timeout}s; no serial data arrived", flush=True)
+            return False
+
+        if error["exc"] is not None:
+            print(f"GPS probe failed: {error['exc']}", flush=True)
+            return False
+
+        line = result["line"]
+        if line.startswith("$"):
+            print(f"GPS probe saw NMEA: {line.strip()}", flush=True)
+            return True
+
+        print(f"GPS probe saw non-NMEA data: {repr(line)}", flush=True)
         return False
 
     def run(self):
